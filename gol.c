@@ -27,7 +27,7 @@ void master(int rank) {
   /*************      Processo mestre   *************/
 
   /*  Lendo arquivo, alocando memória
-   */ 
+   */
   int size, steps;
   FILE *f;
   f = stdin;
@@ -55,14 +55,13 @@ void master(int rank) {
 
   /*  Dividindo linhas por processos para broadcast
    *  num_proc - 1 porque o primeiro é o mestre
-   */ 
-  int lines = size/(num_proc-1); 
+   */
+  int lines = size/(num_proc-1);
   int reminder = size%(num_proc-1);
   steps = 1;
-  MPI_Bcast(&lines, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&steps, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&size, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
+  int info[3] = {lines, steps, size};
+  MPI_Bcast(info, 3, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Barrier(MPI_COMM_WORLD);
   // Último recebe quantidade diferente (linhas + resto)
   int last = lines + reminder;
   MPI_Send(&last, 1, MPI_INT, (num_proc-1), 0, MPI_COMM_WORLD);
@@ -88,15 +87,15 @@ void master(int rank) {
 
     while(1) {
       MPI_Testall(num_proc-2, requests, &flag, MPI_STATUSES_IGNORE);
-      if (flag == 1) { 
-        printf("Flag send\n"); 
-        break; 
+      if (flag == 1) {
+        printf("Flag send\n");
+        break;
       }
     }
 
     // num_proc-2 ou num_proc-1 ??
     MPI_Waitall(num_proc-2, requests, MPI_STATUSES_IGNORE);
-  
+
     // Recebendo board novo
     MPI_Irecv(prev, lines*size, MPI_UNSIGNED_CHAR, 1, 0, MPI_COMM_WORLD, &(requests[0]));
 
@@ -108,9 +107,9 @@ void master(int rank) {
 
     while(1) {
       MPI_Testall(num_proc-2, requests, &flag, MPI_STATUSES_IGNORE);
-      if (flag == 1) { 
-        printf("Flag recv\n"); 
-        break; 
+      if (flag == 1) {
+        printf("Flag recv\n");
+        break;
       }
     }
 
@@ -128,7 +127,7 @@ void master(int rank) {
   #endif
 
   //free(prev);
-  //free(next);  
+  //free(next);
 }
 
 void slave(int rank) {
@@ -139,21 +138,23 @@ void slave(int rank) {
   MPI_Status st;
 
   MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
+  int info[3];
+  MPI_Bcast(info, 3, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Barrier(MPI_COMM_WORLD);
+  lines = info[0];
+  steps = info[1];
+  size = info[2];
 
-  MPI_Bcast(&lines, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&steps, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&size, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  
   /****************    Último processo     ****************/
   if (rank == num_proc-1) {
-    MPI_Recv(&lines, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, NULL);
+    MPI_Recv(&lines, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
     cell_t * prev = (cell_t *) malloc(sizeof(cell_t)*size*lines+1);
     cell_t * next = (cell_t *) malloc(sizeof(cell_t)*size*lines+1);
 
     for (int i = 0; i < steps; ++i) {
       MPI_Recv(prev, (lines+1)*size, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD, &st);
-      
+
       MPI_Get_count(&st, MPI_UNSIGNED_CHAR, &count);
 
       // int size, int lines, int start, int end
@@ -198,7 +199,7 @@ void slave(int rank) {
 
     for (int i = 0; i < steps; ++i) {
       MPI_Recv(prev, (lines+2)*size, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD, &st);
-      
+
       MPI_Get_count(&st, MPI_UNSIGNED_CHAR, &count);
 
       play(prev, next, size, lines+2, 1, lines);
@@ -212,7 +213,7 @@ void slave(int rank) {
 
     //free(next);
     //free(prev);
-  } 
+  }
 }
 
 int main (int argc, char *argv[]) {
@@ -227,7 +228,7 @@ int main (int argc, char *argv[]) {
   } else {
     slave(rank);
   }
-  
+
   MPI_Barrier(MPI_COMM_WORLD);
   printf("========> RANK %d TERMINOU \n", rank);
   MPI_Finalize();
